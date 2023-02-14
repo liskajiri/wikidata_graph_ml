@@ -64,7 +64,7 @@ class Wikidata5m(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return [self.root + dataset.value for dataset in DatasetNames]
+        return [f"{self.root}/{dataset.value}" for dataset in DatasetNames]
 
     @property
     def processed_file_names(self):
@@ -90,9 +90,8 @@ class Wikidata5m(InMemoryDataset):
         print("Unpacking")
         for tar_file in DatasetTarNames:
             tar_name = tar_file.value
-            print(tar_file, raw_dir)
             if tar_file == DatasetTarNames.corpus:
-                save_gz_file(raw_dir + tar_name, self.root + DatasetNames.corpus.value)
+                save_gz_file(raw_dir + tar_name, f"{self.root}/{DatasetNames.corpus.value}")
             else:
                 shutil.unpack_archive(raw_dir + tar_name, self.root)
         
