@@ -1,8 +1,12 @@
 import numpy as np
 import polars as pl
-import pandas as pd
 
 import torch
+import spacy
+
+import gzip
+import shutil
+import os
 
 from constants import *
 
@@ -50,57 +54,61 @@ def get_relation_map(datasets: list[pl.DataFrame]) -> dict:
 class Wikidata5m(InMemoryDataset):
     # dataset = Wikidata5m("datasets/")
     # dataset[0]
-    train = "wikidata5m_transductive_train.txt"
-    validate = "wikidata5m_transductive_valid.txt"
-    test = "wikidata5m_transductive_test.txt"
-    corpus = "wikidata5m_text.txt"
-
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None):
+    def __init__(self, root, name="Wikidata5m", transform=None, pre_transform=None, pre_filter=None):
         # Root is a path to a folder which contains the datasets
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0])
+        self.name = name
         self.entity_map = {}
         self.relation_map = {}
 
     @property
     def raw_file_names(self):
-        return [self.root + dataset for dataset in [self.train, self.validate, self.test, self.corpus]]
+        return [self.root + dataset.value for dataset in DatasetNames]
 
     @property
     def processed_file_names(self):
         return ["saved_dataset.pt"]
 
-    # def download(self):
-    #     def save_gz_file(gzip_file_name: str, out_file_name: str):
-    #         with gzip.open(gzip_file_name, 'rb') as f_in:
-    #             with open(out_file_name, 'wb') as f_out:
-    #                 shutil.copyfileobj(f_in, f_out)
-
-    #     import gzip
-    #     import shutil
-
-    #     print("Started download")
-    #     # Download to `self.raw_dir`.
-    #     for url in DatasetWebPaths:
-    #         url = url.value
-    #         download_url(url, self.raw_dir)
-    #     print("Unpacking")
-    #     for tar_name in DatasetTarNames:
-    #         tar_name = tar_name.value
-    #         shutil.unpack_archive(self.raw_dir + tar_name, self.raw_dir)
+    def download(self):
+        raw_dir = self.raw_dir + "/"
+        def save_gz_file(gzip_file_name: str, out_file_name: str):
+            with gzip.open(gzip_file_name, 'rb') as f_in:
+                with open(out_file_name, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
         
-    #     save_gz_file(self.raw_dir + DatasetTarNames.corpus.value, self.raw_dir + DatasetPaths.corpus.value)
+        def remove_tar_files():
+            for file in DatasetTarNames:
+                os.remove(raw_dir + file.value)
+            os.removedirs(raw_dir)
+
+        print("Started download")
+        # Download to `raw_dir_dir`.
+        for url in DatasetWebPaths:
+            download_url(url.value, raw_dir)
+
+        print("Unpacking")
+        for tar_file in DatasetTarNames:
+            tar_name = tar_file.value
+            print(tar_file, raw_dir)
+            if tar_file == DatasetTarNames.corpus:
+                save_gz_file(raw_dir + tar_name, self.root + DatasetNames.corpus.value)
+            else:
+                shutil.unpack_archive(raw_dir + tar_name, self.root)
+        
+        print("Finished download")
+        remove_tar_files()
 
     def read_csv_files(self) -> list[pl.DataFrame]:
         entity_columns = ["entity1", "relation", "entity2"] 
         corpus_columns = ["entity1", "description"]
         def read_entity_file(file_name: str, entity_columns=entity_columns) -> pl.DataFrame:
-            return pl.read_csv(file_name, sep="\t", has_header=False, new_columns=entity_columns)
+            return pl.read_csv(f"{self.root}/{file_name}", sep="\t", has_header=False, new_columns=entity_columns)
 
-        train_data = read_entity_file(DatasetPaths.train.value)
-        validate_data = read_entity_file(DatasetPaths.validate.value)
-        test_data = read_entity_file(DatasetPaths.test.value)
-        corpus_text = pl.read_csv(DatasetPaths.corpus.value, sep="\t", has_header=False, new_columns=corpus_columns, encoding="utf8-lossy")
+        train_data = read_entity_file(DatasetNames.train.value)
+        validate_data = read_entity_file(DatasetNames.validate.value)
+        test_data = read_entity_file(DatasetNames.test.value)
+        corpus_text = pl.read_csv(f"{self.root}/{DatasetNames.corpus.value}", sep="\t", has_header=False, new_columns=corpus_columns, encoding="utf8-lossy")
 
         return [train_data, validate_data, test_data, corpus_text]
 
@@ -128,13 +136,14 @@ class Wikidata5m(InMemoryDataset):
         
         # X HAS to be in float format! Pytorch gives wrong type warning
         nodes = torch.tensor(list(self.entity_map.values()), dtype=torch.float).reshape((-1, 1))
+        # features = self.get_sentence_embeddings(corpus_text)
 
-        data_list = [Data(x=nodes, edge_index=train_edges, y=test_edges, validation_edges=validate_edges)]
+        data_list = [Data(x=nodes, edge_index=train_edges)] #, y=test_edges, validation_edges=validate_edges)]
 
-        # if self.pre_filter is not None:
-        #     data_list = [data for data in data_list if self.pre_filter(data)]
-        # if self.pre_transform is not None:
-        #     data_list = [self.pre_transform(data) for data in data_list]
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
@@ -152,3 +161,13 @@ class Wikidata5m(InMemoryDataset):
         corpus_text = corpus_text.with_columns([(pl.col("entity1")).apply(lambda x: self.entity_map[x]).alias("entity1")])
 
         return datasets, corpus_text
+    
+    def get_sentence_embeddings(self, corpus_text: pl.DataFrame) -> np.ndarray:
+        nlp = spacy.load("en_core_web_sm")
+
+        print("Creating embeddings")
+        corpus_text = corpus_text.sort(by="entity1")
+        entity_paragraphs = corpus_text.select("description").to_series()
+        vectors = [nlp(doc).vector for doc in entity_paragraphs]
+        features = np.concatenate(vectors)
+        return features
