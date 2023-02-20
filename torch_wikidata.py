@@ -2,7 +2,6 @@ import numpy as np
 import polars as pl
 
 import torch
-import spacy
 
 import gzip
 import shutil
@@ -56,20 +55,21 @@ class Wikidata5m(InMemoryDataset):
     # dataset[0]
     def __init__(self, root, name="Wikidata5m", transform=None, pre_transform=None, pre_filter=None):
         # Root is a path to a folder which contains the datasets
+        self.entity_map = {}
+        self.relation_map = {}
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.name = name
-        self.entity_map = {}
-        self.relation_map = {}
 
     @property
     def raw_file_names(self):
-        return [f"{self.root}/{dataset.value}" for dataset in DatasetNames]
+        return [dataset.value for dataset in DatasetTarNames]
 
     @property
     def processed_file_names(self):
         return ["saved_dataset.pt"]
 
+            
     def download(self):
         raw_dir = self.raw_dir + "/"
         def save_gz_file(gzip_file_name: str, out_file_name: str):
@@ -84,8 +84,11 @@ class Wikidata5m(InMemoryDataset):
 
         print("Started download")
         # Download to `raw_dir_dir`.
-        for url in DatasetWebPaths:
-            download_url(url.value, raw_dir)
+        try:
+            for url in DatasetWebPaths:
+                download_url(url.value, raw_dir)
+        except:
+            print("Unable to download files")
 
         print("Unpacking")
         for tar_file in DatasetTarNames:
@@ -96,7 +99,7 @@ class Wikidata5m(InMemoryDataset):
                 shutil.unpack_archive(raw_dir + tar_name, self.root)
         
         print("Finished download")
-        remove_tar_files()
+        # remove_tar_files()
 
     def read_csv_files(self) -> list[pl.DataFrame]:
         entity_columns = ["entity1", "relation", "entity2"] 
@@ -124,7 +127,7 @@ class Wikidata5m(InMemoryDataset):
         datasets = self.read_csv_files()
         datasets, corpus_text = datasets[:-1], datasets[-1]
 
-        datasets, corpus_text = self.transpose_entity_ids_to_range(datasets, corpus_text)
+        datasets, self.corpus_text = self.transpose_entity_ids_to_range(datasets, corpus_text)
         train_data, validate_data, test_data = datasets
 
         # PyG needs data as torch tensors of longs
@@ -134,10 +137,11 @@ class Wikidata5m(InMemoryDataset):
         test_edges = torch.tensor(self.get_edges_from_dataset(test_data), dtype=torch.long)
         
         # X HAS to be in float format! Pytorch gives wrong type warning
-        nodes = torch.tensor(list(self.entity_map.values()), dtype=torch.float).reshape((-1, 1))
-        # features = self.get_sentence_embeddings(corpus_text)
-
-        data_list = [Data(x=nodes, edge_index=train_edges)] #, y=test_edges, validation_edges=validate_edges)]
+        # nodes = torch.tensor(list(self.entity_map.values()), dtype=torch.float).reshape((-1, 1))
+        # nodes = torch.ones_like(len(self.entity_map.values()), dtype=torch.float)
+        
+        node_ids = torch.arange(len(self.entity_map.values())).reshape((-1, 1))
+        data_list = [Data(x=node_ids, edge_index=train_edges)] #, y=test_edges, validation_edges=validate_edges)]
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -161,12 +165,6 @@ class Wikidata5m(InMemoryDataset):
 
         return datasets, corpus_text
     
-    def get_sentence_embeddings(self, corpus_text: pl.DataFrame) -> np.ndarray:
-        nlp = spacy.load("en_core_web_sm")
-
-        print("Creating embeddings")
-        corpus_text = corpus_text.sort(by="entity1")
-        entity_paragraphs = corpus_text.select("description").to_series()
-        vectors = [nlp(doc).vector for doc in entity_paragraphs]
-        features = np.concatenate(vectors)
-        return features
+    def get_sentences(self) -> pl.DataFrame:
+        corpus_text = self.corpus_text.sort(by="entity1")
+        return corpus_text
