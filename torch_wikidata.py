@@ -1,5 +1,6 @@
 import numpy as np
 import polars as pl
+import pandas as pd
 
 import torch
 
@@ -52,14 +53,17 @@ def get_relation_map(datasets: list[pl.DataFrame]) -> dict:
 
 class Wikidata5m(InMemoryDataset):
     # dataset = Wikidata5m("datasets/")
-    # dataset[0]
-    def __init__(self, root, name="Wikidata5m", transform=None, pre_transform=None, pre_filter=None):
+    # dataset[0]    
+    def __init__(self, root, name="Wikidata5m", use_embeddings=False, transform=None, pre_transform=None, pre_filter=None):
         # Root is a path to a folder which contains the datasets
         self.entity_map = {}
         self.relation_map = {}
+        self.name = name
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.name = name
+        if use_embeddings:
+            self.corpus_text = pd.read_csv(self.processed_paths[1])#, encoding="utf8-lossy", ignore_errors=True)
+            self.corpus_text = self.corpus_text["description"].to_numpy()
 
     @property
     def raw_file_names(self):
@@ -67,7 +71,7 @@ class Wikidata5m(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ["saved_dataset.pt"]
+        return ["saved_dataset.pt", "processed_corpus.csv"]
 
             
     def download(self):
@@ -81,6 +85,12 @@ class Wikidata5m(InMemoryDataset):
             for file in DatasetTarNames:
                 os.remove(raw_dir + file.value)
             os.removedirs(raw_dir)
+           
+        def repair_utf8_corpus_file():
+            corpus_columns = ["entity1", "description"]
+            corpus_text = pl.read_csv(f"{self.root}/{DatasetNames.corpus.value}", sep="\t", has_header=False, new_columns=corpus_columns, encoding="utf8-lossy")
+            corpus_text.write_csv(f"{self.root}/{DatasetNames.corpus.value}")
+
 
         print("Started download")
         # Download to `raw_dir_dir`.
@@ -99,6 +109,7 @@ class Wikidata5m(InMemoryDataset):
                 shutil.unpack_archive(raw_dir + tar_name, self.root)
         
         print("Finished download")
+        repair_utf8_corpus_file()
         # remove_tar_files()
 
     def read_csv_files(self) -> list[pl.DataFrame]:
@@ -110,9 +121,9 @@ class Wikidata5m(InMemoryDataset):
         train_data = read_entity_file(DatasetNames.train.value)
         validate_data = read_entity_file(DatasetNames.validate.value)
         test_data = read_entity_file(DatasetNames.test.value)
-        corpus_text = pl.read_csv(f"{self.root}/{DatasetNames.corpus.value}", sep="\t", has_header=False, new_columns=corpus_columns, encoding="utf8-lossy")
+        corpus_text = pl.read_csv(f"{self.root}/{DatasetNames.corpus.value}", new_columns=corpus_columns, encoding="utf8-lossy")
 
-        return [train_data, validate_data, test_data, corpus_text]
+        return [train_data, validate_data, test_data], corpus_text
 
 
     @staticmethod
@@ -124,8 +135,7 @@ class Wikidata5m(InMemoryDataset):
 
 
     def process(self):
-        datasets = self.read_csv_files()
-        datasets, corpus_text = datasets[:-1], datasets[-1]
+        datasets, corpus_text = self.read_csv_files()
 
         datasets, self.corpus_text = self.transpose_entity_ids_to_range(datasets, corpus_text)
         train_data, validate_data, test_data = datasets
@@ -136,11 +146,8 @@ class Wikidata5m(InMemoryDataset):
         validate_edges = torch.tensor(self.get_edges_from_dataset(validate_data), dtype=torch.long)
         test_edges = torch.tensor(self.get_edges_from_dataset(test_data), dtype=torch.long)
         
-        # X HAS to be in float format! Pytorch gives wrong type warning
-        # nodes = torch.tensor(list(self.entity_map.values()), dtype=torch.float).reshape((-1, 1))
-        # nodes = torch.ones_like(len(self.entity_map.values()), dtype=torch.float)
-        
-        node_ids = torch.arange(len(self.entity_map.values())).reshape((-1, 1))
+        # X HAS to be in float format! Pytorch gives wrong type warning        
+        node_ids = torch.arange(len(self.entity_map.values()), dtype=torch.float).reshape((-1, 1))
         data_list = [Data(x=node_ids, edge_index=train_edges)] #, y=test_edges, validation_edges=validate_edges)]
 
         if self.pre_filter is not None:
@@ -149,8 +156,8 @@ class Wikidata5m(InMemoryDataset):
             data_list = [self.pre_transform(data) for data in data_list]
 
         data, slices = self.collate(data_list)
+        self.corpus_text.write_csv(self.processed_paths[1])
         torch.save((data, slices), self.processed_paths[0])
-
 
     def transpose_entity_ids_to_range(self, datasets: list[pl.DataFrame], corpus_text: pl.DataFrame):
         # Input: train_data, validate_data, test_data, corpus_text
@@ -162,9 +169,5 @@ class Wikidata5m(InMemoryDataset):
 
         datasets = [transpose_one_dataset(dataset, self.entity_map, self.relation_map) for dataset in datasets]
         corpus_text = corpus_text.with_columns([(pl.col("entity1")).apply(lambda x: self.entity_map[x]).alias("entity1")])
-
+        corpus_text = corpus_text.sort("entity1")
         return datasets, corpus_text
-    
-    def get_sentences(self) -> pl.DataFrame:
-        corpus_text = self.corpus_text.sort(by="entity1")
-        return corpus_text
