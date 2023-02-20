@@ -1,5 +1,9 @@
 # Wikidata5m Graph Machine Learning
 
+## ABSTRACT:
+
+TODO:
+
 ## Using Graph Machine Learning for Link Prediction on the Wikidata5m dataset
 
 Wikidata5m is a knowledge graph dataset, which integrates the Wikidata knowledge graph and Wikipedia texts.
@@ -57,7 +61,7 @@ My error metric is ROC AUC, metric for training is Binary Cross Entropy
 --- 
 ## Results using graph structure
 
-Using a 2-layer GCN, I was able to get ROC AUC Score of `61%`
+Using a 2-layer GCN, I was able to get ROC AUC Score of `0.61`
 
 ## Results using graph structure with embeddings from Wikipedia articles
 
@@ -69,4 +73,4 @@ SentenceTransformer('paraphrase-MiniLM-L3-v2')
 
 Getting the embeddings using batches took around 50 minutes (T4 GPU, Rosie)
 
-The results with embeddings were improved up to the ROC AUC score of `65%`.
+The results with embeddings were improved up to the ROC AUC score of `0.65`.
