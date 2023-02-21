@@ -15,3 +15,12 @@ class DatasetNames(Enum):
     validate = "wikidata5m_transductive_valid.txt"
     test = "wikidata5m_transductive_test.txt"
     corpus = "wikidata5m_text.txt"
+
+
+batch_size = 1024
+n_neighbors = [10] * 2
+hidden_channels = 256
+output_channels = 256
+embedding_size = 384
+n_epochs = 5
+lr = 1e-2

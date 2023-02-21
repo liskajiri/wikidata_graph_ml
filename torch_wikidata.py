@@ -12,6 +12,8 @@ from constants import *
 
 from torch_geometric.data import Data, InMemoryDataset, download_url
 
+embeddings_file = "sentence_features.npy"
+
 def make_column_map(columns: list[pl.Series]) -> dict:
     objects = pl.concat(columns, how="vertical")
     objects = objects.unique().sort()
@@ -54,7 +56,7 @@ def get_relation_map(datasets: list[pl.DataFrame]) -> dict:
 class Wikidata5m(InMemoryDataset):
     # dataset = Wikidata5m("datasets/")
     # dataset[0]    
-    def __init__(self, root, name="Wikidata5m", use_embeddings=False, transform=None, pre_transform=None, pre_filter=None):
+    def __init__(self, root, name="Wikidata5m", use_embeddings=False, embeddings_file="sentence_features.npy", transform=None, pre_transform=None, pre_filter=None):
         # Root is a path to a folder which contains the datasets
         self.entity_map = {}
         self.relation_map = {}
@@ -62,8 +64,10 @@ class Wikidata5m(InMemoryDataset):
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0])
         if use_embeddings:
-            self.corpus_text = pd.read_csv(self.processed_paths[1])#, encoding="utf8-lossy", ignore_errors=True)
-            self.corpus_text = self.corpus_text["description"].to_numpy()
+            if os.path.isfile(embeddings_file):
+                self.data.x = self.load_embeddings(self.data.x.shape[0])
+            else:
+                print("Precompute embeddings")
 
     @property
     def raw_file_names(self):
@@ -171,3 +175,13 @@ class Wikidata5m(InMemoryDataset):
         corpus_text = corpus_text.with_columns([(pl.col("entity1")).apply(lambda x: self.entity_map[x]).alias("entity1")])
         corpus_text = corpus_text.sort("entity1")
         return datasets, corpus_text
+    
+    def load_embeddings(self, data_n_rows: int) -> np.array:
+        print("Loading embeddings")
+        features = np.load(embeddings_file)
+        X = np.ones((data_n_rows, features.shape[1]))
+        X[:features.shape[0], :] = features
+
+        torch_features = torch.from_numpy(X)
+        torch_features = torch_features.to(torch.float)
+        return torch_features
