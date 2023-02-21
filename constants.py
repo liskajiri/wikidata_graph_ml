@@ -16,11 +16,13 @@ class DatasetNames(Enum):
     test = "wikidata5m_transductive_test.txt"
     corpus = "wikidata5m_text.txt"
 
-
+embeddings_file = "sentence_features.npy"
+    
+    
 batch_size = 1024
-n_neighbors = [10] * 2
+n_neighbors = [15] * 2
 hidden_channels = 256
 output_channels = 256
 embedding_size = 384
-n_epochs = 5
+n_epochs = 8
 lr = 1e-2

@@ -12,8 +12,6 @@ from constants import *
 
 from torch_geometric.data import Data, InMemoryDataset, download_url
 
-embeddings_file = "sentence_features.npy"
-
 def make_column_map(columns: list[pl.Series]) -> dict:
     objects = pl.concat(columns, how="vertical")
     objects = objects.unique().sort()
