@@ -24,5 +24,5 @@ n_neighbors = [15] * 2
 hidden_channels = 256
 output_channels = 256
 embedding_size = 384
-n_epochs = 8
+n_epochs = 3
 lr = 1e-2
