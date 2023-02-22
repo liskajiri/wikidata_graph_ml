@@ -2,9 +2,9 @@
 
 ## Abstract:
 
-Wikipedia5m is a subset of the Wikipedia knowledge graph. Wikipedia's knowledge graph is mostly created by hand, by thousands of volunteers without automation. I will try to use Graph Machine Learning methods to predict links between entities, which could make the tagging easier, perhaps fully autonomous in the future. Sentence embeddings of each entity are then added to see if the context provides further improvement in classification. The hypothesis is that sentence embeddings will add information to the network, which will improve classification.
+Wikipedia5m is a subset of the Wikipedia knowledge graph. Wikipedia's knowledge graph is mostly created by hand, by thousands of volunteers without automation. I will try to use Graph Machine Learning methods to predict links between entities, which could make the tagging easier, and perhaps fully autonomous in the future. Sentence embeddings of each entity are then added to see if the context provides further improvement in classification. The hypothesis is that sentence embeddings will add information to the network, which will improve classification.
 ### Contributions
-I have written a custom PyG dataset loader, which downloads data from source, preprocesses it and creates a PyG graph. I have tested multiple models, with and without sentence embeddings to assess differences in speed, memory and final performance.
+I have written a custom PyG dataset loader, which downloads data from the source, preprocesses it, and creates a PyG graph. I have tested multiple models, with and without sentence embeddings to assess differences in speed, memory, and final performance.
 
 ## Dataset: Wikidata5m
 
@@ -12,7 +12,7 @@ Wikidata5m is a knowledge graph dataset, which integrates the Wikidata knowledge
 
 The dataset can be found at [https://deepgraphlearning.github.io/project/wikidata5m](https://deepgraphlearning.github.io/project/wikidata5m).
 
-I am using the transductive version, which has 4,5M+ entities, 822 relations and 20M+ edges.
+I am using the transductive version, which has 4,5M+ entities, 822 relations, and 20M+ edges.
 
 ## Link prediction
 
@@ -23,7 +23,7 @@ Common tasks are:
 - Bonds between molecules in proteins
 
 Link prediction is traditionally done using pairs of nodes, we predict if there exists an edge between them.
-The original nodes are infused with negative samples of edges and the model's task is to predict the true edges, while disregarding the negative edges.
+The original nodes are infused with negative samples of edges and the model's task is to predict the true edges while disregarding the negative edges.
 
 ## Dataset preprocessing
 
@@ -87,7 +87,7 @@ Remarks: Authors of the GAT layer suggest using the new GATv2 layer for better p
 ![ROC AUC results](results.png "ROC AUC performance")
 
 All of the networks are composed of 2 same layers, using `relu` and dropout = `0.5` on the first layer.
-GAT layers were the least stable, achieving vastly different results across epochs. They would need longer training, but to keep the limits for speed and memory comparisons, I used the same ammount of epochs for all models.
+GAT layers were the least stable, achieving vastly different results across epochs. They would need longer training, but to keep the limits for speed and memory comparisons, I used the same amount of epochs for all models.
 
 Device                       | GCN        | GATv2       | GraphConv   | GCN+NLP     | GATv2+NLP   | GraphConv+NLP     |
 |----------------------------|------------|-------------|-------------|-------------|-------------|-------------|
@@ -113,7 +113,7 @@ And run the corresponding notebooks.
 ## Conclusion
 
 My hypothesis was not confirmed, models with embeddings did not show better performance. There can be several possible explanations for this. Embeddings might not be correctly trained, or they can be mismatched with the edges, although I have tried to avoid this. Some of the entities also do not have a wikipedia page, so a uniform tensor was used, which provides potentially conflicting information to the model.
-Among the models, GAT was expected to be the best performing, which we can be seen in the results, at the cost of substantially higher memory.
+Among the models, GAT was expected to be the best performing, which can be seen in the results, at the cost of substantially higher memory.
 
 ## Sources
 
